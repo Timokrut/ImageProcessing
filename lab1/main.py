@@ -37,6 +37,13 @@ class Photo:
         
     def split_to_channels(self) -> tuple[str, str, str]:
         b_channel, g_channel, r_channel = cv2.split(self.img)
+
+        k = np.zeros_like(b_channel)
+
+        b_channel = cv2.merge([b_channel, k, k])
+        g_channel = cv2.merge([k, g_channel, k])
+        r_channel = cv2.merge([k, k, r_channel])
+
         cv2.imwrite(f"processed/RGB_channels/{self.prefix[1:]}/r{self.prefix}", r_channel)
         cv2.imwrite(f"processed/RGB_channels/{self.prefix[1:]}/g{self.prefix}", g_channel)
         cv2.imwrite(f"processed/RGB_channels/{self.prefix[1:]}/b{self.prefix}", b_channel)
