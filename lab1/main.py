@@ -30,19 +30,12 @@ class Photo:
         # Get the size of the data type in bytes (e.g., uint8 is 1 byte, uint16 is 2 bytes)
         bytes_per_channel = dtype.itemsize
         
-        # ??? per channel / per pixel??
         bits_per_channel = bytes_per_channel * 8 * self.channels
 
         return ((self.width * self.height * bits_per_channel) / 8 ) / self.file_size 
         
     def split_to_channels(self) -> tuple[str, str, str]:
         b_channel, g_channel, r_channel = cv2.split(self.img)
-
-        k = np.zeros_like(b_channel)
-
-        b_channel = cv2.merge([b_channel, k, k])
-        g_channel = cv2.merge([k, g_channel, k])
-        r_channel = cv2.merge([k, k, r_channel])
 
         cv2.imwrite(f"processed/RGB_channels/{self.prefix[1:]}/r{self.prefix}", r_channel)
         cv2.imwrite(f"processed/RGB_channels/{self.prefix[1:]}/g{self.prefix}", g_channel)
@@ -93,16 +86,15 @@ class Photo:
 
         return (rotated_img, f"processed/rotated/{self.prefix[1:]}/rotated{self.prefix}")
 
-
     def block_discretization(self, block_size: int) -> tuple[Any, str]:
-        halftone_img = self.make_halftone()[0] 
+        result = self.img.copy()
 
-        new_h = self.height // block_size
-        new_w = self.width // block_size
-        
-        resized = cv2.resize(halftone_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        result = cv2.resize(resized, (self.width, self.height), interpolation=cv2.INTER_NEAREST)
-        
+        for y in range(0, self.height, block_size):
+            for x in range(0, self.width, block_size):
+                block = self.img[y:y+block_size, x:x+block_size]
+                avg = np.mean(block)
+                result[y:y+block_size, x:x+block_size] = avg
+
         cv2.imwrite(f'processed/discretized/{self.prefix[1:]}/discretized{block_size}{self.prefix}', result)
 
         return (result, f"processed/discretized/{self.prefix[1:]}/discretized{block_size}{self.prefix}")
