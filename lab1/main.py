@@ -126,15 +126,32 @@ class Photo:
     def resize(self, image, x: int, y: int) -> tuple:
         resized_linear = cv2.resize(image, (x, y), interpolation=cv2.INTER_LINEAR)
         resized_cubic = cv2.resize(image, (x, y), interpolation=cv2.INTER_CUBIC)
-        resized_area = cv2.resize(image, (x, y), interpolation=cv2.INTER_AREA)
         resized_nearest = cv2.resize(image, (x, y), interpolation=cv2.INTER_NEAREST)
 
         cv2.imwrite(f'processed/resized/{self.prefix[1:]}/resized_linear{self.prefix}', resized_linear)
         cv2.imwrite(f'processed/resized/{self.prefix[1:]}/resized_cubic{self.prefix}', resized_cubic)
-        cv2.imwrite(f'processed/resized/{self.prefix[1:]}/resized_area{self.prefix}', resized_area)
         cv2.imwrite(f'processed/resized/{self.prefix[1:]}/resized_nearest{self.prefix}', resized_nearest)
 
-        return (resized_linear, f"processed/resized/{self.prefix[1:]}/resized_linear{self.prefix}", resized_cubic, f"processed/resized/{self.prefix[1:]}/resized_cubic{self.prefix}", resized_area, f"processed/resized/{self.prefix[1:]}/resized_area{self.prefix}", resized_nearest, f"processed/resized/{self.prefix[1:]}/resized_nearest{self.prefix}")
+        return (resized_linear, f"processed/resized/{self.prefix[1:]}/resized_linear{self.prefix}", resized_cubic, f"processed/resized/{self.prefix[1:]}/resized_cubic{self.prefix}", resized_nearest, f"processed/resized/{self.prefix[1:]}/resized_nearest{self.prefix}")
+
+    def difference_with(self, other) -> tuple[Any, str]:
+        img1 = self.make_halftone()[0] 
+        img2 = other.make_halftone()[0] 
+
+        if img1.shape != img2.shape:
+            raise Exception("Images must have the same size")
+
+        diff = self.img.astype(np.int16) - other.img.astype(np.uint16)
+        print("min:", diff.min(), "max:", diff.max())
+        
+        diff_abs = np.abs(diff)
+
+        diff_norm = cv2.normalize(diff_abs, None, 0, 255, cv2.NORM_MINMAX)
+
+        path = f'processed/diff/diff{self.prefix}'
+        cv2.imwrite(path, diff_norm.astype(np.uint8))
+
+        return (diff_abs, path)
 
 if __name__ == "__main__":
     jpg_photo = Photo(ORIGINAL_JPG_PATH)
@@ -173,3 +190,6 @@ if __name__ == "__main__":
 
     jpg_photo.resize(cut_jpg, 300, 300)
     bmp_photo.resize(cut_bmp, 300, 300)
+
+    bmp_photo.difference_with(jpg_photo)
+    jpg_photo.difference_with(bmp_photo)
