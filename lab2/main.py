@@ -86,25 +86,21 @@ class Photo:
         path = f"processed/graph/{self.prefix[1:]}/histogram.jpg"
         plt.savefig(path)
 
-    # TODO: Сделать реализацию через замену пикселей (как в дискретизации lab1)
-    def mean_filter(self, ksize: int) -> tuple[Any, str]:
-        filtered = cv2.blur(self.noise_img, (ksize, ksize))
+    def mean_filter(self, size: int) -> tuple[Any, str]:
+        filtered = cv2.blur(self.noise_img, (size, size))
 
         os.makedirs(f"processed/mean_filter/{self.prefix[1:]}", exist_ok=True)
-        path = f"processed/mean_filter/{self.prefix[1:]}/mean_{ksize}{self.prefix}"
+        path = f"processed/mean_filter/{self.prefix[1:]}/mean_{size}{self.prefix}"
         cv2.imwrite(path, filtered)
 
         return (filtered, path)
     
-    # TODO: Разобраться с фильтром,
-    # в каких то случаях там нужно этот результат складывать с 
-    # исходным если коэффициент в центре 5 а не 4: ну или что то по типу такого
     def sharpen(self) -> tuple[Any, str]:
-        kernel = np.array([[0,-1,0],
-                          [-1,5,-1],
-                          [0,-1,0]])
+        matrix = np.array([[0,1,0],
+                          [1,-4,1],
+                          [0,1,0]])
 
-        sharp = cv2.filter2D(self.hf_img, -1, kernel)
+        sharp = cv2.filter2D(self.hf_img, -1, matrix)
 
         os.makedirs(f"processed/sharpen/{self.prefix[1:]}", exist_ok=True)
         path = f"processed/sharpen/{self.prefix[1:]}/sharpen{self.prefix}"
@@ -113,14 +109,14 @@ class Photo:
         return (sharp, path)
 
     def roberts(self):
-        kernel_x = np.array([[1, 0],
+        matrix_x = np.array([[1, 0],
                             [0, -1]])
 
-        kernel_y = np.array([[0, 1],
+        matrix_y = np.array([[0, 1],
                             [-1, 0]])
 
-        gx = cv2.filter2D(self.hf_img, -1, kernel_x)
-        gy = cv2.filter2D(self.hf_img, -1, kernel_y)
+        gx = cv2.filter2D(self.hf_img, -1, matrix_x)
+        gy = cv2.filter2D(self.hf_img, -1, matrix_y)
 
         roberts = cv2.magnitude(gx.astype(np.float32), gy.astype(np.float32))
         roberts = np.uint8(roberts)
@@ -131,16 +127,16 @@ class Photo:
         return roberts, path
     
     def prewitt(self):
-        kernel_x = np.array([[-1,0,1],
+        matrix_x = np.array([[-1,0,1],
                             [-1,0,1],
                             [-1,0,1]])
 
-        kernel_y = np.array([[1,1,1],
+        matrix_y = np.array([[1,1,1],
                             [0,0,0],
                             [-1,-1,-1]])
 
-        gx = cv2.filter2D(self.hf_img, -1, kernel_x)
-        gy = cv2.filter2D(self.hf_img, -1, kernel_y)
+        gx = cv2.filter2D(self.hf_img, -1, matrix_x)
+        gy = cv2.filter2D(self.hf_img, -1, matrix_y)
 
         prewitt = cv2.magnitude(gx.astype(np.float32), gy.astype(np.float32))
         prewitt = np.uint8(prewitt)
@@ -152,10 +148,19 @@ class Photo:
         return prewitt, path 
     
     def sobel(self):
-        gx = cv2.Sobel(self.hf_img, cv2.CV_64F, 1, 0, ksize=3)
-        gy = cv2.Sobel(self.hf_img, cv2.CV_64F, 0, 1, ksize=3)
+        matrix_x = np.array([[-1, 0, 1],
+                             [-2, 0, 2],
+                             [-1, 0, 1]])
 
-        sobel = cv2.magnitude(gx, gy)
+        matrix_y = np.array([[1, 2, 1],
+                             [0, 0, 0],
+                             [-1, -2, -1]])
+        
+        gx = cv2.filter2D(self.hf_img, -1, matrix_x)
+        gy = cv2.filter2D(self.hf_img, -1, matrix_y)
+
+        
+        sobel = cv2.magnitude(gx.astype(np.float32), gy.astype(np.float32))
         sobel = np.uint8(sobel)
 
         os.makedirs(f"processed/sobel/{self.prefix[1:]}", exist_ok=True)
@@ -178,6 +183,10 @@ if __name__ == "__main__":
         bmp_photo.gamma_transform(hf_bmp, gamma)
         jpg_photo.gamma_transform(hf_jpg, gamma)
 
+    # Доп задание
+    # gamma01, _ = bmp_photo.gamma_transform(bmp_photo.hf_img.astype(np.float32), 0.1)
+    # gamma10, _ = bmp_photo.gamma_transform(gamma01, 10)
+    
     noise_jpg, _ = jpg_photo.add_exp_noise(hf_jpg, 20)
     noise_bmp, _ = bmp_photo.add_exp_noise(hf_bmp, 20)
 
