@@ -1,147 +1,95 @@
-import os
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
+import os
 
-from typing import Any
+img = cv2.imread("originals/photo.bmp", cv2.IMREAD_GRAYSCALE)
 
-ORIGINAL_JPG_PATH = 'originals/photo.jpg'
-ORIGINAL_BMP_PATH = 'originals/photo.bmp'
+M, N = img.shape
 
-class Photo:
-    def __init__(self, path: str) -> None:
-        self.path = path 
-        self.img = cv2.imread(path)
-        _, self.prefix = os.path.splitext(path)
+# Дополнение до P x Q
+P, Q = 2*M, 2*N
+padded = np.zeros((P, Q))
+padded[:M, :N] = img
 
-        if self.img is None:
-            raise Exception(f"Couldn't find file at {path}")
+# FFT
+F = np.fft.fft2(padded)
 
-        dimensions = self.img.shape 
-        self.height = dimensions[0]
-        self.width = dimensions[1]
-        self.channels = dimensions[2] if len(dimensions) == 3 else 1
-        self.file_size = os.path.getsize(self.path)
+# Центрирование
+F_shift = np.fft.fftshift(F)
 
-    def __str__(self) -> str:
-        return f"Image stats: \nHeight: {self.height}\nWidth: {self.width} \nChannels: {self.channels} \nFile size: {self.file_size}"
+def distance(u, v, center_u, center_v):
+    return np.sqrt((u - center_u)**2 + (v - center_v)**2)
 
-    def make_halftone(self) -> tuple[Any, str]: 
-        halftone_img = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY) 
-        self.hf_img = halftone_img
-        os.makedirs(f"processed/halftone/{self.prefix[1:]}", exist_ok=True)
-        cv2.imwrite(f"processed/halftone/{self.prefix[1:]}/halftone{self.prefix}", halftone_img)
+def ideal_lpf(D0):
+    H = np.zeros((P, Q))
+    center_u, center_v = P//2, Q//2
 
-        return (halftone_img, f"processed/halftone/{self.prefix[1:]}/halftone{self.prefix}")
+    for u in range(P):
+        for v in range(Q):
+            if distance(u, v, center_u, center_v) <= D0:
+                H[u, v] = 1
+    return H
 
-    def get_fourier_spectrum(self):
-        f = np.fft.fft2(self.hf_img)
-        fshift = np.fft.fftshift(f)
+def butterworth_lpf(D0, n):
+    H = np.zeros((P, Q))
+    center_u, center_v = P//2, Q//2
 
-        magnitude = 20 * np.log(np.abs(fshift) + 1)
+    for u in range(P):
+        for v in range(Q):
+            D = distance(u, v, center_u, center_v)
+            H[u, v] = 1 / (1 + (D / D0)**(2*n))
+    return H
 
-        os.makedirs(f"processed/spectrum/{self.prefix[1:]}", exist_ok=True)
-        path = f"processed/spectrum/{self.prefix[1:]}/spectrum{self.prefix}"
+def gaussian_lpf(D0):
+    H = np.zeros((P, Q))
+    center_u, center_v = P//2, Q//2
 
-        cv2.imwrite(path, magnitude)
+    for u in range(P):
+        for v in range(Q):
+            D = distance(u, v, center_u, center_v)
+            H[u, v] = np.exp(-(D**2) / (2 * D0**2))
+    return H
 
-        self.fshift = fshift
-        return (magnitude, path)
-    
-    def _distance(self, i, j, crow, ccol):
-        return np.sqrt((i - crow)**2 + (j - ccol)**2)
-    
-    def ideal_lpf(self, D0):
-        rows, cols = self.hf_img.shape
-        crow, ccol = rows // 2, cols // 2
+def ideal_hpf(D0):
+    return 1 - ideal_lpf(D0)
 
-        mask = np.zeros((rows, cols), np.uint8)
+def butterworth_hpf(D0, n):
+    return 1 - butterworth_lpf(D0, n)
 
-        for i in range(rows):
-            for j in range(cols):
-                if self._distance(i, j, crow, ccol) <= D0:
-                    mask[i, j] = 1
+def gaussian_hpf(D0):
+    return 1 - gaussian_lpf(D0)
 
-        return self._apply_filter(mask, f"ideal_lpf{D0}", "ideal_lpf")
-    
-    def butterworth_lpf(self, D0, n):
-        rows, cols = self.hf_img.shape
-        crow, ccol = rows // 2, cols // 2
+def apply_filter(H, name):
+    # Перемножение
+    G = F_shift * H
 
-        mask = np.zeros((rows, cols))
+    # Обратный сдвиг
+    G_shift = np.fft.ifftshift(G)
 
-        for i in range(rows):
-            for j in range(cols):
-                D = self._distance(i, j, crow, ccol)
-                mask[i, j] = 1 / (1 + (D / D0)**(2*n))
+    # Обратное FFT
+    g = np.fft.ifft2(G_shift)
 
-        return self._apply_filter(mask, f"butter_lpf_D0_{D0}_n_{n}", "butterworth_lpf")
-    
-    def gaussian_lpf(self, D0=50):
-        rows, cols = self.hf_img.shape
-        crow, ccol = rows // 2, cols // 2
+    # Действительная часть
+    g = np.real(g)
 
-        mask = np.zeros((rows, cols))
+    # Обрезка
+    result = g[:M, :N]
 
-        for i in range(rows):
-            for j in range(cols):
-                D = self._distance(i, j, crow, ccol)
-                mask[i, j] = np.exp(-(D**2) / (2 * D0**2))
+    # Сохранение
+    os.makedirs("processed", exist_ok=True)
+    cv2.imwrite(f"processed/{name}.png", result)
 
-        return self._apply_filter(mask, f"gaussian_lpf{D0}", "gaussian_lpf")
-    
-    def ideal_hpf(self, D0):
-        mask_lpf, _ = self.ideal_lpf(D0)
-        return self._apply_filter(1 - mask_lpf, f"ideal_hpf{D0}", "ideal_hpf")
+# Спектр
+spectrum = np.log(np.abs(F_shift) + 1)
+cv2.imwrite("results/spectrum.png", spectrum)
 
-    def butterworth_hpf(self, D0, n):
-        mask_lpf, _ = self.butterworth_lpf(D0, n)
-        return self._apply_filter(1 - mask_lpf, f"butter_hpf_D0_{D0}_n_{n}", "butterworth_hpf")
+# === Запуск ===
 
-    def gaussian_hpf(self, D0=50):
-        mask_lpf, _ = self.gaussian_lpf(D0)
-        return self._apply_filter(1 - mask_lpf, f"gaussian_hpf{D0}", "gaussian_hpf")
+for D0 in [5, 10, 50, 250]:
+    apply_filter(ideal_lpf(D0), f"ideal_lpf_{D0}")
+    apply_filter(butterworth_lpf(D0, 2), f"butterworth_lpf{D0}")
+    apply_filter(gaussian_lpf(D0), f"gaussian_lpf{D0}")
 
-    def _apply_filter(self, mask, name, folder):
-        fshift = self.fshift
-
-        filtered = fshift * mask
-        img_back = np.fft.ifft2(np.fft.ifftshift(filtered))
-        img_back = np.abs(img_back)
-
-        os.makedirs(f"processed/{folder}/{self.prefix[1:]}", exist_ok=True)
-        path = f"processed/{folder}/{self.prefix[1:]}/{name}{self.prefix}"
-
-        cv2.imwrite(path, img_back)
-
-        return (img_back, path)
-
-
-if __name__ == "__main__":
-    # jpg_photo = Photo(ORIGINAL_JPG_PATH)
-    bmp_photo = Photo(ORIGINAL_BMP_PATH)
-
-    # jpg_photo.make_halftone()
-    bmp_photo.make_halftone()
-
-    # jpg_photo.get_fourier_spectrum()
-    bmp_photo.get_fourier_spectrum()
-
-    D0_values = [5, 10, 50, 250]
-    
-    for D0 in D0_values:
-        # НЧ
-        # jpg_photo.ideal_lpf(D0)
-        bmp_photo.ideal_lpf(D0)
-        # jpg_photo.butterworth_lpf(D0, 2)
-        bmp_photo.butterworth_lpf(D0, 2)
-        # jpg_photo.gaussian_lpf(D0)
-        bmp_photo.gaussian_lpf(D0)
-
-        # ВЧ
-        # jpg_photo.ideal_hpf(D0)
-        bmp_photo.ideal_hpf(D0)
-        # jpg_photo.butterworth_hpf(D0, 2)
-        bmp_photo.butterworth_hpf(D0, 2)
-        # jpg_photo.gaussian_hpf(D0)
-        bmp_photo.gaussian_hpf(D0)
+    apply_filter(ideal_hpf(D0), f"ideal_hpf{D0}")
+    apply_filter(butterworth_hpf(D0, 2), f"butterworth_hpf{D0}")
+    apply_filter(gaussian_hpf(D0), f"gaussian_hpf{D0}")
