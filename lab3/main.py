@@ -75,15 +75,11 @@ def apply_filter(H, name):
     # Обрезка
     result = g[:M, :N]
 
-    # Сохранение
     os.makedirs("processed", exist_ok=True)
     cv2.imwrite(f"processed/{name}.png", result)
 
-# Спектр
 spectrum = np.log(np.abs(F_shift) + 1)
 cv2.imwrite("results/spectrum.png", spectrum)
-
-# === Запуск ===
 
 for D0 in [5, 10, 50, 250]:
     apply_filter(ideal_lpf(D0), f"ideal_lpf_{D0}")
